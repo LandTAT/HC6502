@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+//队列占用256，实际可用长度255
+//利用uint8_t溢出实现环形队列
 #define ZQ_MAX 255
 typedef uint8_t item;
 

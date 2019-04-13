@@ -6,6 +6,7 @@
 #include "uart.h"
 #include "gpio.h"
 #include "ps2.h"
+#include "vga.h"
 
 
 #define SHELL_ARGS_MAX  (6)
@@ -30,6 +31,8 @@ static s32 cmd_exec(void);
 static s32 cmd_dumpw(void);
 static s32 cmd_dumpb(void);
 static s32 cmd_gpio(void);
+static s32 cmd_ps2(void);
+static s32 cmd_vga(void);
 static s32 cmd_help(void);
 
 struct shell_cmd_info ci[] = {
@@ -39,6 +42,8 @@ struct shell_cmd_info ci[] = {
     {"dumpw",   cmd_dumpw,   "dumpw [addr] [word_num]               dump    any addr"},
     {"dumpb",   cmd_dumpb,   "dumpb [addr] [byte_num]               dump    any addr"},
     {"gpio",    cmd_gpio,    "gpio  init|read|write [VIA1_PA0...]   ctrl any gpio"   },
+    {"ps2",     cmd_ps2,     "ps2                                   read ps2 input"  },
+    {"vga",     cmd_vga,     "vga   cmd args...                     vga ctrl"        },
     {"help",    cmd_help,    "help                                  print cmd info"  },
 };
 
@@ -293,6 +298,34 @@ static s32 cmd_gpio()
 	return 0;
 }
 
+static s32 cmd_ps2()
+{
+    ps2_process();
+    return 0;
+}
+
+static s32 cmd_vga()
+{
+    u32 x, y;
+    u8 ch;
+
+	if (strcmp(argv[1], "clear") == 0) {
+		uart_printf("vga clear start\r\n");
+        vga_ctrl(VC_CLEAR);
+		uart_printf("vga clear end  \r\n");
+    } else if (strcmp(argv[1], "fill") == 0) {
+        ch = strtoul(argv[2], 0, 0);
+        vga_ctrl(VC_FILL, ch);
+    } else if (strcmp(argv[1], "set") == 0) {
+        x  = strtoul(argv[2], 0, 0);
+        y  = strtoul(argv[3], 0, 0);
+        ch = strtoul(argv[4], 0, 0);
+        vga_ctrl(VC_SET_CH, x, y, ch);
+    }
+
+    return 0;
+}
+
 static s32 cmd_help()
 {
 	u32 i;
@@ -301,7 +334,6 @@ static s32 cmd_help()
 		uart_printf("%s:\t\t%s\r\n", ci[i].name, ci[i].desc);
 	}
 
-    ps2_process();
 	return 0;
 }
 

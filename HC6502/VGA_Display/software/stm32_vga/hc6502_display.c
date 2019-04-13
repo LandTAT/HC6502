@@ -8,18 +8,23 @@
 
 static void GPIO_Configuration(void);
 static void EXTI_Configuration(void);
-void reset_state(void);
-void buff_fill(uint8_t ch);
-void tabs(void);
-void line_feed(void);
-void refresh(void);
-void set_cursor(uint8_t x);
+static void TIM4_Configuration(void);
+static void reset_state(void);
+static void buff_fill(uint8_t ch);
+static void tabs(void);
+static void line_feed(void);
+static void refresh(void);
+static void exec_clear(uint8_t x);
+static void exec_fill(uint8_t x);
+static void set_cursor(uint8_t x);
 
 uint8_t char_buf[CHAR_ROW][CHAR_COL + 1];
 uint16_t first_line;
 uint16_t cursor_row, cursor_col;
 void (*requ_para_func)(uint8_t);
-//bool refresh_flag = true;
+uint8_t para_cnt;
+uint8_t para_buf[8];
+bool refresh_flag;
 zqueue message;
 
 void hc6502_display_init()
@@ -30,10 +35,12 @@ void hc6502_display_init()
 	vidInit();
 	reset_state();
 	buff_fill(' ');
+	TIM4_Configuration();
 }
 
 void hc6502_display_routine(void)
 {
+	//æŒ‰é“ç†è¿™é‡Œè¦å…³EXTIä¸­æ–­ï¼Œä½†å®é™…åˆ†æä¸‹æ¥é£é™©ä¸å¤§
 	while(!zq_empty(&message)){
 		uint8_t ch = zq_dequeue(&message);
 		if(requ_para_func == NULL){
@@ -52,12 +59,10 @@ void hc6502_display_routine(void)
 						line_feed();
 						break;
 					case CMD_CLEAR:
-						reset_state();
-						buff_fill(' ');
+						exec_clear(ch);
 						break;
 					case CMD_FILL:
-						reset_state();
-						buff_fill(0x7F);
+						exec_fill(ch);
 						break;
 					case CMD_SETCUR:
 						set_cursor(ch);
@@ -72,7 +77,33 @@ void hc6502_display_routine(void)
 			(*requ_para_func)(ch);
 		}
 	}
-	refresh();
+	if(refresh_flag){
+		refresh();
+		refresh_flag = false;
+	}
+}
+
+void hc6502_display_debug(void)
+{
+	static uint8_t i = 0;
+	uint8_t mask = 0x80;
+	while(!zq_empty(&message)){
+		uint8_t ch = zq_dequeue(&message);
+		char_buf[cursor_row][0] = (i / 100) + '0';
+		char_buf[cursor_row][1] = (i / 10 % 10) + '0';
+		char_buf[cursor_row][2] = (i % 10) + '0';
+		char_buf[cursor_row][3] = ':';
+		for(uint16_t i = 0; i < 8; i++){
+				char_buf[cursor_row][i + 8] = ch & mask ? '1' : '0';
+				mask >>= 1;
+		}
+		line_feed();
+		++i;
+	}
+	if(refresh_flag){
+		refresh();
+		refresh_flag = false;
+	}
 }
 
 void refresh(void)
@@ -83,24 +114,39 @@ void refresh(void)
 	}
 }
 
+void exec_clear(uint8_t x)
+{
+	reset_state();
+	buff_fill(' ');
+}
+
+void exec_fill(uint8_t x)
+{
+	if(para_cnt < 1){
+		para_buf[para_cnt] = x;
+		++para_cnt;
+		requ_para_func = exec_fill;
+	}
+	else{
+		reset_state();
+		buff_fill(x & 0x7F);
+		para_cnt = 0;
+		requ_para_func = NULL;
+	}
+}
+
 void set_cursor(uint8_t x)
 {
-	static uint8_t cnt;
-	static uint8_t new_row;
-	if(x == CMD_SETCUR){
-		cnt = 0;
+	if(para_cnt < 2){
+		para_buf[para_cnt] = x;
+		++para_cnt;
 		requ_para_func = set_cursor;
 	}
 	else{
-		if(cnt < 1){
-			new_row = x;
-			++cnt;
-		}
-		else{
-			cursor_col = new_row % CHAR_COL;
-			cursor_row = (first_line + x) % CHAR_ROW;
-			requ_para_func = NULL;
-		}
+		cursor_col = para_buf[1] % CHAR_COL;
+		cursor_row = (first_line + x) % CHAR_ROW;
+		para_cnt = 0;
+		requ_para_func = NULL;
 	}
 }
 
@@ -133,6 +179,7 @@ void reset_state(void)
 	first_line = 0;
 	cursor_row = 0;
 	cursor_col = 0;
+	para_cnt = 0;
 	requ_para_func = NULL;
 }
 
@@ -144,6 +191,124 @@ void buff_fill(uint8_t ch)
 	}
 }
 
+void GPIO_Configuration(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	
+	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
+	
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+	GPIO_InitStructure.GPIO_Pin  = GPIO_Pin_15;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_8 | GPIO_Pin_10 | GPIO_Pin_11 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+	GPIO_WriteBit(GPIOA, GPIO_Pin_15, Bit_SET);
+}
+
+void EXTI_Configuration(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure; 
+	EXTI_InitTypeDef EXTI_InitStructure;
+	NVIC_InitTypeDef NVIC_InitStructure;
+	
+  //NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
+  NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+	
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;		//GPIO_Mode_IN_FLOATING
+  GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+  GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource6); 
+	
+  EXTI_InitStructure.EXTI_Line = EXTI_Line6;
+  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;	//EXTI_Trigger_Rising_Falling
+  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+  EXTI_Init(&EXTI_InitStructure);
+}
+
+void TIM4_Configuration(void)
+{
+	NVIC_InitTypeDef NVIC_InitStructure;
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+	
+  NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+	
+	TIM_DeInit(TIM4);
+	//100msä¸­æ–­ä¸€æ¬¡
+  TIM_TimeBaseStructure.TIM_Period = 200;
+  TIM_TimeBaseStructure.TIM_Prescaler = (36000 - 1);
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; 
+  TIM_TimeBaseInit(TIM4, &TIM_TimeBaseStructure);
+  
+	TIM_ClearFlag(TIM4, TIM_FLAG_Update);
+	TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
+	TIM_Cmd(TIM4, ENABLE);
+}
+
+
+void EXTI9_5_IRQHandler(void)
+{
+	if(EXTI_GetITStatus(EXTI_Line6) != RESET)
+	{
+			GPIO_WriteBit(GPIOA, GPIO_Pin_15, Bit_RESET);
+			if(!zq_full(&message)){
+				uint8_t data = 0;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_15);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_14);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_13);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_11);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_10);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_4);
+				data <<= 1;
+				data |= GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_3);
+				zq_enqueue(&message, data);
+			}
+			else{
+				//Queue is full!!!
+				GPIO_WriteBit(GPIOA, GPIO_Pin_11, Bit_SET);
+			}
+			GPIO_WriteBit(GPIOA, GPIO_Pin_15, Bit_SET);
+			EXTI_ClearITPendingBit(EXTI_Line6);
+  }
+}
+
+void TIM4_IRQHandler(void)
+{
+	static bool flag;
+	//æ£€æŸ¥TIM4æ›´æ–°ä¸­æ–­å‘ç”Ÿä¸å¦
+	if(TIM_GetITStatus(TIM4, TIM_IT_Update) != RESET){
+		flag = !flag;
+		if(flag)
+			GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_SET);
+		else
+			GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_RESET);
+		refresh_flag = true;
+		TIM_ClearITPendingBit(TIM4, TIM_IT_Update);		//æ¸…é™¤TIMxæ›´æ–°ä¸­æ–­æ ‡å¿—
+	}
+}
+
+/*
 void EXTI9_5_IRQHandler(void)
 {
 	if(EXTI_GetITStatus(EXTI_Line6) != RESET)
@@ -179,53 +344,4 @@ void EXTI9_5_IRQHandler(void)
     EXTI_ClearITPendingBit(EXTI_Line6);
   }
 }
-
-void GPIO_Configuration(void)
-{
-	GPIO_InitTypeDef GPIO_InitStructure;
-	
-	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
-	
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-	GPIO_InitStructure.GPIO_Pin  = GPIO_Pin_15;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_8 | GPIO_Pin_10 | GPIO_Pin_11 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	GPIO_WriteBit(GPIOA, GPIO_Pin_15, Bit_RESET);
-}
-
-void EXTI_Configuration(void)
-{
-	GPIO_InitTypeDef GPIO_InitStructure; 
-	EXTI_InitTypeDef EXTI_InitStructure;
-	NVIC_InitTypeDef NVIC_InitStructure;
-	
-  /* ÅäÖÃNVICÎªÓÅÏÈ¼¶×é1 */
-  //NVIC_PriorityGroupConfig(NVIC_PriorityGroup_1);
-  /* ÅäÖÃÖĞ¶ÏÔ´£º°´¼ü1 */
-  NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
-  /* ÅäÖÃÇÀÕ¼ÓÅÏÈ¼¶ */
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
-  /* ÅäÖÃ×ÓÓÅÏÈ¼¶ */
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-  /* Ê¹ÄÜÖĞ¶ÏÍ¨µÀ */
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-	
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;		//GPIO_Mode_IN_FLOATING
-  GPIO_Init(GPIOB, &GPIO_InitStructure);
-
-	/* Ñ¡ÔñEXTIµÄĞÅºÅÔ´ */
-  GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource6); 
-	
-  EXTI_InitStructure.EXTI_Line = EXTI_Line6;
-  EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-  EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
-  EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-  EXTI_Init(&EXTI_InitStructure);
-}
+*/

@@ -39,9 +39,9 @@ extern u8 fb[VID_VSIZE][VID_HSIZE+2];
 
 int main(void)
 {
-	char buf[64];
-	unsigned char ch = 0x20;
-	int i, x;
+	//char buf[64];
+	//unsigned char ch = 0x20;
+	//int i, x;
  	RCC_Configuration();
 	GPIO_Configuration();
 	//USART2_Config();
@@ -67,7 +67,7 @@ int main(void)
 	sysDelayMs(1000);
 	GPIO_WriteBit(GPIOA, GPIO_Pin_11, Bit_RESET);
 	sysDelayMs(1000);
-	ch = 0;
+	
 	while(1){
 		/*
 		if(!zq_empty(&queue)){
@@ -82,12 +82,11 @@ int main(void)
 		}
 		*/
 		hc6502_display_routine();
-		GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_SET);
-		sysDelayMs(50);
-		GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_RESET);
-		sysDelayMs(50);
-		//USART_SendData(USART2, ch++);
-		//while(USART_GetFlagStatus(USART2, USART_FLAG_TC) != SET);
+		//hc6502_display_debug();
+		//GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_SET);
+		//sysDelayMs(50);
+		//GPIO_WriteBit(GPIOA, GPIO_Pin_12, Bit_RESET);
+		sysDelayMs(27);
 	}
 	
 	//demoInit();
@@ -102,6 +101,7 @@ void RCC_Configuration(void)
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_SPI1 | RCC_APB2Periph_TIM1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_AFIO, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
 }
 
 void GPIO_Configuration(void)

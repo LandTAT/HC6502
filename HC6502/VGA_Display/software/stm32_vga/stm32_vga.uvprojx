@@ -441,6 +441,11 @@
               <FilePath>.\zqueue.c</FilePath>
             </File>
             <File>
+              <FileName>zqueue.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\zqueue.h</FilePath>
+            </File>
+            <File>
               <FileName>hc6502_display.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\hc6502_display.c</FilePath>

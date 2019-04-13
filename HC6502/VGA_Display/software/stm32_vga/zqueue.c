@@ -8,12 +8,15 @@ void zq_init(zqueue* q)
 
 void zq_enqueue(zqueue* q, item x)
 {
-	q->data[q->rear++] = x;
+	q->data[q->rear] = x;
+	++q->rear;
 }
 
 item zq_dequeue(zqueue* q)
 {
-	return q->data[q->head++];
+	uint8_t x = q->data[q->head];
+	++q->head;
+	return x;
 }
 
 bool zq_empty(const zqueue* q)
@@ -23,7 +26,7 @@ bool zq_empty(const zqueue* q)
 
 bool zq_full(const zqueue* q)
 {
-	return q->head == q->rear + 1;
+	return q->head == (q->rear + 1);
 }
 
 uint8_t zq_size(const zqueue* q)

@@ -1,0 +1,11 @@
+接线：
+PB3		data[0]
+PB4		data[1]
+PB8		data[2]
+PB10	data[3]
+PB11	data[4]
+PB13	data[5]
+PB14	data[6]
+PB15	data[7]
+PB6		data_ready
+PA15	data_taken
